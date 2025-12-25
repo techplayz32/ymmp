@@ -1,0 +1,126 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: ymmp-linux
+            build_script: |
+              bun run build
+              mv ymmp.exe ymmp-linux
+          - os: macos-latest
+            artifact_name: ymmp-macos
+            build_script: |
+              bun run build
+              mv ymmp.exe ymmp-macos
+          - os: windows-latest
+            artifact_name: ymmp-windows.exe
+            build_script: |
+              bun run build
+              mv ymmp.exe ymmp-windows.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build
+        run: ${{ matrix.build_script }}
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}${{ matrix.os == 'windows-latest' && '' || '' }}
+          if-no-files-found: error
+
+  release:
+    name: Create Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v7
+        with:
+          path: artifacts
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          if [ "${{ github.ref_type }}" == "tag" ]; then
+            # Get previous tag
+            PREV_TAG=$(git describe --tags --abbrev=0 ${{ github.ref_name }}^ 2>/dev/null || echo "")
+            
+            if [ -z "$PREV_TAG" ]; then
+              # First release, get all commits
+              CHANGELOG=$(git log --pretty=format:"- %s (%h)" --no-merges)
+            else
+              # Get commits since previous tag
+              CHANGELOG=$(git log ${PREV_TAG}..${{ github.ref_name }} --pretty=format:"- %s (%h)" --no-merges)
+            fi
+            
+            # Save changelog to file
+            echo "$CHANGELOG" > changelog.txt
+            
+            # Set output for release notes
+            echo "changelog<<EOF" >> $GITHUB_OUTPUT
+            echo "$CHANGELOG" >> $GITHUB_OUTPUT
+            echo "EOF" >> $GITHUB_OUTPUT
+          else
+            echo "changelog=Manual release" >> $GITHUB_OUTPUT
+            echo "Manual release" > changelog.txt
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: |
+            ## Changes
+            ${{ steps.changelog.outputs.changelog }}
+            
+            ## Downloads
+            Download the appropriate binary for your platform:
+            - **Linux**: ymmp-linux
+            - **macOS**: ymmp-macos
+            - **Windows**: ymmp-windows.exe
+            
+            ## Installation
+            1. Download the binary for your platform
+            2. Make it executable (Linux/macOS): `chmod +x ymmp-*`
+            3. Run: `./ymmp-* patch` or `ymmp-windows.exe patch`
+          files: |
+            artifacts/ymmp-linux/ymmp-linux
+            artifacts/ymmp-macos/ymmp-macos
+            artifacts/ymmp-windows.exe/ymmp-windows.exe
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
