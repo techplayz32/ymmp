@@ -73,7 +73,7 @@ export class Patcher {
       case "darwin":
         return path.join("/Applications", "Яндекс Музыка.app");
       case "linux":
-        return path.join("/opt", "Яндекс Музыка");
+        return path.join("/opt", "yandex-music");
       case "win32":
         return path.join(
           process.env.LOCALAPPDATA || "",
