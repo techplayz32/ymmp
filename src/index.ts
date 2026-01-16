@@ -14,7 +14,7 @@ const logger = new Logger("CLI");
 const program = new Command();
 const config = new ConfigManager();
 
-program.name("ymmp").description("YandexMusicModPatcher CLI").version("1.0.0");
+program.name("ymmp").description("YandexMusicModPatcher CLI").version("1.0.1");
 
 program
   .command("config")
